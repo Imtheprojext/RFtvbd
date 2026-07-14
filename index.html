@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sports Live TV</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --bg: #0c0c0f;
+    --surface: #16161a;
+    --surface2: #1e1e24;
+    --border: #2a2a32;
+    --text: #e2e2e6;
+    --text2: #8e8e96;
+    --accent: #6c5ce7;
+    --accent2: #a29bfe;
+    --red: #ff4757;
+    --green: #2ed573;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 100dvh;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width:5px; height:5px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#333; border-radius:9px; }
+
+  /* ── Header ── */
+  .header {
+    position: sticky; top:0; z-index:100;
+    background: rgba(12,12,15,.92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+    height: 52px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo { display:flex; align-items:center; gap:8px; }
+  .logo-icon {
+    width:28px; height:28px; border-radius:8px;
+    background: linear-gradient(135deg, var(--accent), #4834d4);
+    display:flex; align-items:center; justify-content:center;
+  }
+  /* CSS play triangle inside logo */
+  .logo-tri {
+    width:0; height:0;
+    border-top:5px solid transparent;
+    border-bottom:5px solid transparent;
+    border-left:9px solid #fff;
+    margin-left:2px;
+  }
+  .logo-text { font-weight:700; font-size:15px; color:#fff; letter-spacing:.3px; }
+
+  .live-badge {
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:10px; font-weight:700; letter-spacing:.8px;
+    color: var(--red);
+    background: rgba(255,71,87,.1);
+    border: 1px solid rgba(255,71,87,.2);
+    padding: 4px 10px; border-radius:20px;
+  }
+  .live-dot {
+    width:6px; height:6px; background:var(--red); border-radius:50%;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(255,71,87,.5); }
+    50% { opacity:.7; box-shadow:0 0 0 5px rgba(255,71,87,0); }
+  }
+
+  /* ── Layout ── */
+  .app {
+    display: flex; flex-direction: column;
+    min-height: calc(100dvh - 52px);
+  }
+
+  /* ── Player ── */
+  .player-box {
+    width:100%; background:#000;
+    position: relative;
+    aspect-ratio: 16/9;
+    max-height: 56vh;
+    flex-shrink: 0;
+  }
+  .player-box video {
+    width:100%; height:100%;
+    object-fit: contain;
+    display:block;
+  }
+  .player-overlay {
+    position:absolute; inset:0;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    background: rgba(0,0,0,.6);
+    transition: opacity .25s;
+    gap:10px;
+  }
+  .player-overlay.hide { opacity:0; pointer-events:none; }
+
+  /* idle tv icon */
+  .idle-tv {
+    width:44px; height:34px;
+    border: 3px solid #555;
+    border-radius:5px; position:relative;
+  }
+  .idle-tv::after {
+    content:''; position:absolute;
+    bottom:-8px; left:50%; transform:translateX(-50%);
+    width:20px; height:3px; background:#555; border-radius:2px;
+  }
+
+  .idle-text { color:#777; font-size:13px; }
+
+  /* spinner */
+  .spinner {
+    width:36px; height:36px;
+    border:3px solid rgba(108,92,231,.2);
+    border-top-color: var(--accent);
+    border-radius:50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  .load-text { color:#aaa; font-size:12px; }
+
+  /* error */
+  .err-circle {
+    width:36px; height:36px; border-radius:50%;
+    background:rgba(255,71,87,.12);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .err-x { position:relative; width:16px; height:16px; }
+  .err-x::before, .err-x::after {
+    content:''; position:absolute; top:50%; left:50%;
+    width:14px; height:2px; background:var(--red); border-radius:1px;
+  }
+  .err-x::before { transform:translate(-50%,-50%) rotate(45deg); }
+  .err-x::after { transform:translate(-50%,-50%) rotate(-45deg); }
+  .err-text { color:#f8a5a5; font-size:12px; text-align:center; }
+  .retry-btn {
+    background:rgba(255,71,87,.12); color:#f8a5a5;
+    border:1px solid rgba(255,71,87,.2);
+    padding:6px 16px; border-radius:8px;
+    font-size:12px; font-weight:600; cursor:pointer;
+  }
+  .retry-btn:active { transform:scale(.96); }
+
+  /* now-playing strip */
+  .np-strip {
+    position:absolute; bottom:0; left:0; right:0;
+    padding:8px 12px;
+    background: linear-gradient(transparent, rgba(0,0,0,.85));
+    display:none; align-items:center; gap:8px;
+  }
+  .np-strip.show { display:flex; }
+  .np-logo { width:28px; height:28px; border-radius:6px; object-fit:cover; background:#222; }
+  .np-name { font-size:12px; font-weight:600; color:#fff; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .np-live { display:flex; align-items:center; gap:4px; font-size:9px; font-weight:700; color:var(--red); }
+  .np-dot { width:5px; height:5px; background:var(--red); border-radius:50%; animation:pulse 1.4s ease-in-out infinite; }
+
+  /* play btn overlay */
+  .big-play {
+    width:56px; height:56px; border-radius:50%;
+    background: rgba(108,92,231,.85);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; border:2px solid rgba(162,155,254,.4);
+    transition: transform .2s;
+  }
+  .big-play:active { transform:scale(.92); }
+  .big-play-tri {
+    width:0; height:0;
+    border-top:10px solid transparent;
+    border-bottom:10px solid transparent;
+    border-left:17px solid #fff;
+    margin-left:3px;
+  }
+
+  /* ── Channel List ── */
+  .channels-area {
+    flex:1; display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+
+  /* Search bar */
+  .search-wrap {
+    padding:10px 12px 6px;
+    display:flex; gap:8px; align-items:center;
+    background: var(--bg);
+    position:sticky; top:0; z-index:10;
+  }
+  .search-box {
+    flex:1; position:relative;
+  }
+  .search-ico {
+    position:absolute; left:10px; top:50%; transform:translateY(-50%);
+    width:14px; height:14px;
+  }
+  .search-ico::before {
+    content:''; position:absolute; top:0; left:0;
+    width:10px; height:10px;
+    border:2px solid #666; border-radius:50%;
+  }
+  .search-ico::after {
+    content:''; position:absolute; bottom:0; right:1px;
+    width:5px; height:2px; background:#666;
+    transform:rotate(45deg); border-radius:1px;
+  }
+  .search-input {
+    width:100%; padding:9px 12px 9px 32px;
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius:10px; color:#fff;
+    font-size:13px; outline:none;
+    transition: border-color .2s;
+  }
+  .search-input::placeholder { color:#555; }
+  .search-input:focus { border-color: var(--accent); }
+
+  .ch-count {
+    font-size:11px; color:var(--text2);
+    white-space:nowrap; font-weight:500;
+  }
+
+  /* channel list */
+  .ch-list {
+    flex:1;
+    overflow-y:auto;
+    padding:4px 12px 80px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ch-item {
+    display:flex; align-items:center; gap:12px;
+    padding:10px 12px;
+    border-radius:12px;
+    cursor:pointer;
+    transition: background .2s;
+    border: 1px solid transparent;
+    margin-bottom:4px;
+  }
+  .ch-item:active { transform:scale(.985); }
+  .ch-item:hover { background: var(--surface); }
+  .ch-item.active {
+    background: rgba(108,92,231,.08);
+    border-color: rgba(108,92,231,.25);
+  }
+
+  .ch-logo {
+    width:40px; height:40px; border-radius:10px;
+    object-fit:cover; background:var(--surface2);
+    border:1px solid var(--border);
+    flex-shrink:0;
+  }
+
+  .ch-info { flex:1; min-width:0; }
+  .ch-name {
+    font-size:13px; font-weight:600; color:#fff;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .ch-group {
+    font-size:11px; color:var(--text2); margin-top:1px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  .ch-play-btn {
+    width:32px; height:32px; border-radius:50%;
+    background: var(--surface2);
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; transition: background .2s;
+  }
+  .ch-item.active .ch-play-btn { background: var(--accent); }
+  .ch-play-tri {
+    width:0; height:0;
+    border-top:5px solid transparent;
+    border-bottom:5px solid transparent;
+    border-left:9px solid #aaa;
+    margin-left:2px;
+  }
+  .ch-item.active .ch-play-tri { border-left-color:#fff; }
+
+  /* active dot */
+  .ch-active-dot {
+    width:6px; height:6px; border-radius:50%;
+    background:var(--green);
+    position:absolute; top:-1px; right:-1px;
+    display:none;
+  }
+  .ch-item.active .ch-active-dot { display:block; }
+
+  /* separator */
+  .ch-divider {
+    height:1px; background:var(--border);
+    margin:6px 0; opacity:.4;
+  }
+
+  /* skeleton */
+  .skel {
+    height:60px; border-radius:12px;
+    margin-bottom:4px;
+    background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%);
+    background-size:200% 100%;
+    animation: shimmer 1.3s infinite;
+  }
+  @keyframes shimmer { to { background-position:-200% 0; } }
+
+  /* error box */
+  .list-error {
+    text-align:center; padding:32px 20px;
+    color:#888; font-size:13px;
+  }
+  .list-error-btn {
+    margin-top:12px;
+    background: var(--surface2); color:var(--text2);
+    border:1px solid var(--border);
+    padding:8px 20px; border-radius:8px;
+    font-size:12px; font-weight:600; cursor:pointer;
+  }
+
+  /* empty search */
+  .empty-search {
+    text-align:center; padding:40px 20px; color:#666; font-size:13px;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    border-top:1px solid var(--border);
+    padding:20px 16px;
+    text-align:center;
+    background: var(--surface);
+  }
+  .footer-label { font-size:12px; color:#666; margin-bottom:10px; }
+  .footer-link {
+    display:inline-flex; align-items:center; gap:6px;
+    color:var(--accent2); text-decoration:none;
+    font-size:13px; font-weight:600;
+    padding:8px 20px;
+    border:1px solid rgba(108,92,231,.2);
+    border-radius:10px;
+    transition: all .2s;
+  }
+  .footer-link:hover {
+    background:rgba(108,92,231,.08);
+    border-color:rgba(108,92,231,.4);
+  }
+  .footer-arrow {
+    width:10px; height:10px;
+    border-top:2px solid currentColor;
+    border-right:2px solid currentColor;
+    transform:rotate(45deg);
+  }
+
+  /* ── Desktop: side-by-side ── */
+  @media (min-width:768px) {
+    .app { flex-direction:row; height:calc(100dvh - 52px); }
+    .player-col {
+      flex:1; display:flex; flex-direction:column;
+      background:#000; min-width:0;
+    }
+    .player-box {
+      flex:1; max-height:none; aspect-ratio:auto;
+    }
+    .channels-area {
+      width:340px; min-width:340px;
+      border-left:1px solid var(--border);
+      background: var(--bg);
+    }
+    .ch-list { padding-bottom:20px; }
+    .footer-desktop {
+      padding:12px 16px;
+      border-top:1px solid var(--border);
+      text-align:center;
+      background:var(--surface);
+    }
+    .footer-mobile { display:none; }
+  }
+  @media (max-width:767px) {
+    .footer-desktop { display:none; }
+    .player-box { position:sticky; top:52px; z-index:50; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon"><div class="logo-tri"></div></div>
+    <span class="logo-text">Sports Live TV</span>
+  </div>
+  <div class="live-badge"><span class="live-dot"></span>LIVE</div>
+</header>
+
+<div class="app">
+
+  <!-- Player Column (desktop) / Sticky player (mobile) -->
+  <div class="player-col">
+    <div class="player-box" id="playerBox">
+      <video id="vid" playsinline controls></video>
+
+      <div class="player-overlay" id="overlay">
+        <!-- idle -->
+        <div id="stIdle">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <div class="idle-tv"></div>
+            <span class="idle-text">Select a channel to watch</span>
+          </div>
+        </div>
+        <!-- loading -->
+        <div id="stLoad" style="display:none;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <div class="spinner"></div>
+            <span class="load-text">Connecting...</span>
+          </div>
+        </div>
+        <!-- error -->
+        <div id="stErr" style="display:none;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <div class="err-circle"><div class="err-x"></div></div>
+            <span class="err-text" id="errMsg">Stream unavailable</span>
+            <button class="retry-btn" onclick="retry()">Retry</button>
+          </div>
+        </div>
+        <!-- tap to play -->
+        <div id="stPlay" style="display:none;">
+          <div class="big-play" onclick="tapPlay()"><div class="big-play-tri"></div></div>
+        </div>
+      </div>
+
+      <div class="np-strip" id="npStrip">
+        <img class="np-logo" id="npLogo" src="" alt="">
+        <span class="np-name" id="npName"></span>
+        <span class="np-live"><span class="np-dot"></span>LIVE</span>
+      </div>
+    </div>
+
+    <!-- Footer inside player col (desktop only) -->
+    <div class="footer-desktop">
+      <div class="footer-label">Visit for more</div>
+      <a href="https://sportslivetv.pages.dev/" target="_blank" rel="noopener" class="footer-link">
+        sportslivetv.pages.dev <span class="footer-arrow"></span>
+      </a>
+      <div class="footer-label" style="margin-top:10px;">Contact : <a href="https://t.me/Rifat2396404" target="_blank" rel="noopener" style="color:var(--accent2);text-decoration:none;">@Rifat2396404</a></div>
+    </div>
+  </div>
+
+  <!-- Channel Sidebar / List -->
+  <div class="channels-area">
+    <div class="search-wrap">
+      <div class="search-box">
+        <span class="search-ico"></span>
+        <input class="search-input" id="searchIn" type="text" placeholder="Search channels...">
+      </div>
+      <span class="ch-count" id="chCount"></span>
+    </div>
+    <div class="ch-list" id="chList">
+      <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+      <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Footer (mobile only) -->
+<div class="footer footer-mobile">
+  <div class="footer-label">Visit for more</div>
+  <a href="https://sportslivetv.pages.dev/" target="_blank" rel="noopener" class="footer-link">
+    sportslivetv.pages.dev <span class="footer-arrow"></span>
+  </a>
+  <div class="footer-label" style="margin-top:10px;">Contact : <a href="https://t.me/Rifat2396404" target="_blank" rel="noopener" style="color:var(--accent2);text-decoration:none;">@Rifat2396404</a></div>
+</div>
+
+<script>
+(function(){
+  const M3U_URL='https://raw.githubusercontent.com/MRM3UK/New-try/refs/heads/main/worldcuptest.m3u';
+  let channels=[], cur=null, hls=null;
+
+  // fallback logo data-uri (simple TV text)
+  const FALLBACK='data:image/svg+xml;base64,'+btoa('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" rx="8" fill="#1e1e24"/><text x="20" y="24" text-anchor="middle" font-size="12" fill="#555" font-family="sans-serif">TV</text></svg>');
+
+  // parse m3u
+  function parse(txt){
+    const lines=txt.split('\n'), out=[];
+    let inf=null;
+    for(const raw of lines){
+      const l=raw.trim();
+      if(l.startsWith('#EXTINF:')){
+        inf={};
+        const m1=l.match(/tvg-logo="([^"]*)"/);
+        const m2=l.match(/group-title="([^"]*)"/);
+        const m3=l.match(/,(.+)$/);
+        inf.logo=m1?m1[1]:'';
+        inf.group=m2?m2[1].trim():'';
+        inf.name=m3?m3[1].trim():'Channel';
+      } else if(l && !l.startsWith('#') && inf){
+        inf.url=l; inf.id=out.length;
+        out.push(inf); inf=null;
+      }
+    }
+    return out;
+  }
+
+  // render list
+  function render(list){
+    const el=document.getElementById('chList');
+    if(!list.length){
+      el.innerHTML='<div class="empty-search">No channels found</div>';
+      return;
+    }
+    el.innerHTML=list.map(c=>`
+      <div class="ch-item${cur&&cur.id===c.id?' active':''}" onclick="play(${c.id})">
+        <div style="position:relative">
+          <img class="ch-logo" src="${c.logo||FALLBACK}" alt="" onerror="this.src='${FALLBACK}'">
+          <span class="ch-active-dot"></span>
+        </div>
+        <div class="ch-info">
+          <div class="ch-name">${c.name}</div>
+          ${c.group?'<div class="ch-group">'+c.group+'</div>':'<div class="ch-group">Live Stream</div>'}
+        </div>
+        <div class="ch-play-btn"><div class="ch-play-tri"></div></div>
+      </div>
+    `).join('');
+  }
+
+  function filtered(){
+    const q=document.getElementById('searchIn').value.toLowerCase().trim();
+    if(!q) return channels;
+    return channels.filter(c=>c.name.toLowerCase().includes(q)||c.group.toLowerCase().includes(q));
+  }
+
+  function refresh(){
+    const f=filtered();
+    document.getElementById('chCount').textContent=f.length+'/'+channels.length;
+    render(f);
+  }
+
+  // show overlay state
+  function showState(which){
+    ['stIdle','stLoad','stErr','stPlay'].forEach(id=>{
+      document.getElementById(id).style.display='none';
+    });
+    const ov=document.getElementById('overlay');
+    if(which){
+      document.getElementById(which).style.display='block';
+      ov.classList.remove('hide');
+    } else {
+      ov.classList.add('hide');
+    }
+  }
+
+  // play channel
+  window.play=function(id){
+    const ch=channels.find(c=>c.id===id);
+    if(!ch) return;
+    cur=ch;
+    refresh();
+
+    // update now-playing
+    document.getElementById('npLogo').src=ch.logo||FALLBACK;
+    document.getElementById('npName').textContent=ch.name;
+    document.getElementById('npStrip').classList.remove('show');
+
+    showState('stLoad');
+    loadStream(ch.url);
+  };
+
+  window.retry=function(){ if(cur) play(cur.id); };
+
+  window.tapPlay=function(){
+    const v=document.getElementById('vid');
+    v.play().then(()=>{
+      showState(null);
+      document.getElementById('npStrip').classList.add('show');
+    }).catch(()=>{});
+  };
+
+  function loadStream(url){
+    const v=document.getElementById('vid');
+    if(hls){ hls.destroy(); hls=null; }
+    v.pause(); v.removeAttribute('src'); v.load();
+
+    if(Hls.isSupported()){
+      hls=new Hls({ maxBufferLength:30, enableWorker:true, lowLatencyMode:true });
+      hls.loadSource(url);
+      hls.attachMedia(v);
+
+      hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+        v.play().then(()=>{
+          showState(null);
+          document.getElementById('npStrip').classList.add('show');
+        }).catch(()=>{
+          showState('stPlay');
+          document.getElementById('npStrip').classList.add('show');
+        });
+      });
+
+      hls.on(Hls.Events.ERROR,(_,d)=>{
+        if(d.fatal){
+          document.getElementById('errMsg').textContent=
+            d.type===Hls.ErrorTypes.NETWORK_ERROR?'Network error - stream may be offline':'Playback error';
+          showState('stErr');
+        }
+      });
+
+    } else if(v.canPlayType('application/vnd.apple.mpegurl')){
+      v.src=url;
+      v.addEventListener('loadedmetadata',function f(){
+        v.removeEventListener('loadedmetadata',f);
+        v.play().then(()=>{
+          showState(null);
+          document.getElementById('npStrip').classList.add('show');
+        }).catch(()=>{
+          showState('stPlay');
+          document.getElementById('npStrip').classList.add('show');
+        });
+      });
+      v.addEventListener('error',function f(){
+        v.removeEventListener('error',f);
+        showState('stErr');
+      });
+    } else {
+      document.getElementById('errMsg').textContent='Browser not supported';
+      showState('stErr');
+    }
+  }
+
+  // load playlist
+  async function load(){
+    const el=document.getElementById('chList');
+    el.innerHTML=Array(6).fill('<div class="skel"></div>').join('');
+    try{
+      const r=await fetch(M3U_URL);
+      if(!r.ok) throw new Error(r.status);
+      channels=parse(await r.text());
+      document.getElementById('chCount').textContent=channels.length+'/'+channels.length;
+      render(channels);
+    }catch(e){
+      el.innerHTML='<div class="list-error">Failed to load channels<br><button class="list-error-btn" onclick="location.reload()">Retry</button></div>';
+    }
+  }
+
+  document.getElementById('searchIn').addEventListener('input', refresh);
+
+  load();
+})();
+</script>
+</body>
+</html>
